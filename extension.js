@@ -13,26 +13,41 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-const { Clutter, Meta } = imports.gi;
-const Main = imports.ui.main;
+import Clutter from 'gi://Clutter'
+import Mtk from 'gi://Mtk'
+import Meta from 'gi://Meta';
 
-class Extension {
-  constructor() {
-    this.origMethods = {
-      "Main.activateWindow": Main.activateWindow
-    };
-    Main.activateWindow = (window, ...args) => {
-      this.movePointerMaybe(window);
-      this.origMethods["Main.activateWindow"](window, ...args);
-    };
+import {
+  Extension,
+  InjectionManager,
+} from "resource:///org/gnome/shell/extensions/extension.js";
+
+
+export default class AltTabMoveMouseExtension extends Extension {
+  enable() {
+    this._injectionManager = new InjectionManager();
     const seat = Clutter.get_default_backend().get_default_seat();
     this.vdevice = seat.create_virtual_device(
       Clutter.InputDeviceType.POINTER_DEVICE
     );
+
+    this._injectionManager.overrideMethod(
+      Meta.Window.prototype,
+      "activate",
+      (originalMethod) => {
+        let that = this;
+        return function (...args) {
+          that.movePointerMaybe(this);
+          originalMethod.call(this, ...args);
+        };
+      }
+    );
   }
 
-  destroy() {
-    Main.activateWindow = this.origMethods["Main.activateWindow"];
+  disable() {
+      this._injectionManager.clear();
+      this._injectionManager = null;
+      this.vdevice = null;
   }
 
   movePointerMaybe(window) {
@@ -47,20 +62,7 @@ class Extension {
 
   pointerAlreadyOnWindow(window) {
     const [x, y] = global.get_pointer();
-    const rect = new Meta.Rectangle({ x, y, width: 1, height: 1 });
+    const rect = new Mtk.Rectangle({ x, y, width: 1, height: 1 });
     return rect.intersect(window.get_frame_rect())[0];
   }
-}
-
-let extension = null;
-
-/* exported enable */
-function enable() {
-  extension = new Extension();
-}
-
-/* exported disable */
-function disable() {
-  extension.destroy();
-  extension = null;
 }
